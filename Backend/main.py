@@ -113,20 +113,17 @@ def require_roles(*allowed: str):
 
 # --- Configuración FastAPI y CORS ---
 
-origins = [
-    "http://localhost:5173"
-]
-
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    #allow_credentials=True,
+    # mientras pruebas/deployas, deja todo abierto:
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    # si luego usas cookies, puedes activar esto:
+    # allow_credentials=True,
 )
-
 # --------- USUARIO ---------
 
 conn = UsuarioConnection()
@@ -1183,4 +1180,5 @@ def delete_forecast_run(id_run: int):
     Elimina una corrida de forecast (cabecera + detalle).
     """
     forecast_conn.delete_run(id_run)
+
     return Response(status_code=HTTP_204_NO_CONTENT)

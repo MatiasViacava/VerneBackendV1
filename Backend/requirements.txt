@@ -1,27 +1,45 @@
-﻿annotated-types==0.7.0
+# --- Core FastAPI / ASGI ---
+fastapi==0.119.1
+uvicorn==0.38.0
+starlette==0.48.0
 anyio==4.11.0
-autopep8==2.3.2
+h11==0.16.0
+sniffio==1.3.1
 click==8.3.0
 colorama==0.4.6
-fastapi==0.119.1
-h11==0.16.0
-idna==3.11
-pycodestyle==2.14.0
+typing_extensions==4.15.0
+annotated-types==0.7.0
+typing-inspection==0.4.2
+
+# --- Validación / modelos ---
 pydantic==2.12.3
 pydantic_core==2.41.4
-sniffio==1.3.1
-starlette==0.48.0
-typing-inspection==0.4.2
-typing_extensions==4.15.0
-uvicorn==0.38.0
 
+# --- Base de datos PostgreSQL ---
+psycopg[binary]==3.1.18
+
+# --- Auth / seguridad ---
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# --- Manejo de variables de entorno ---
+python-dotenv==1.0.1
+
+# --- Carga de archivos (UploadFile / forms) ---
+python-multipart==0.0.9
+
+# --- Excel / CSV avanzado para ABC-XYZ ---
+openpyxl==3.1.5
+
+# --- ML / ciencia de datos ---
 numpy==2.0.2
 pandas==2.2.2
 scikit-learn==1.6.1
 xgboost==3.1.1
+joblib==1.4.2
 
-joblib
+# --- Herramientas de desarrollo (opcionales) ---
+autopep8==2.3.2
+pycodestyle==2.14.0
 
-psycopg[binary]
-python-jose[cryptography]
 

@@ -121,6 +121,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=False,
     # si luego usas cookies, puedes activar esto:
     # allow_credentials=True,
 )
@@ -1182,3 +1183,4 @@ def delete_forecast_run(id_run: int):
     forecast_conn.delete_run(id_run)
 
     return Response(status_code=HTTP_204_NO_CONTENT)
+

@@ -977,41 +977,191 @@ def abcxyz_last(source: Optional[str] = None):
 
 forecast_conn = ForecastConnection()
 
-def _csv_baseline_for_item(it):
-    """
-    Baseline simple para items que vienen de un análisis ABC-XYZ por archivo.
+# ===== helpers para baseline desde archivo =====
+def _last_nonzero(values):
+    """Devuelve el último valor > 0 de la serie; si no hay, 0."""
+    if not isinstance(values, (list, tuple)):
+        return 0.0
+    for v in reversed(values):
+        try:
+            x = float(v or 0)
+        except Exception:
+            x = 0.0
+        if x > 0:
+            return x
+    return 0.0
 
-    Usa el último valor de la serie importada (amt_series / qty_series).
-    Si no lo encuentra, devuelve 0.0.
+def _moving_avg_last_k_nonzero(values, k=3):
+    """Promedio de los últimos k valores > 0; si no hay, 0."""
+    nz = []
+    if isinstance(values, (list, tuple)):
+        for v in values:
+            try:
+                x = float(v or 0)
+            except Exception:
+                x = 0.0
+            if x > 0:
+                nz.append(x)
+    if not nz:
+        return 0.0
+    k = min(k, len(nz))
+    return sum(nz[-k:]) / k
+
+# --- helpers de fecha/mes ---
+def _to_ym(s) -> str:
+    """Acepta 'YYYY-MM', 'YYYY-MM-DD', date/datetime y devuelve 'YYYY-MM'."""
+    if s is None:
+        return ""
+    if isinstance(s, (datetime, )):
+        return f"{s.year:04d}-{s.month:02d}"
+    try:
+        # 'YYYY-MM' o 'YYYY-MM-DD'
+        txt = str(s)
+        if len(txt) >= 7 and txt[4] == '-' and txt[6].isdigit():
+            return txt[:7]
+    except Exception:
+        pass
+    return ""
+
+def _ym_to_int(ym: str) -> int:
+    """Convierte 'YYYY-MM' a entero de línea de tiempo (años*12 + mes)."""
+    return int(ym[:4]) * 12 + int(ym[5:7])
+
+def _avg_last_k_deltas(values, k=3):
+    """
+    Promedio de los últimos k deltas (v[i] - v[i-1]) donde ambos > 0.
+    Si no hay suficientes, devuelve 0.
+    """
+    if not isinstance(values, (list, tuple)) or len(values) < 2:
+        return 0.0
+    deltas = []
+    prev = None
+    for v in values:
+        try:
+            x = float(v or 0)
+        except Exception:
+            x = 0.0
+        if prev is not None and x > 0 and prev > 0:
+            deltas.append(x - prev)
+        prev = x
+    if not deltas:
+        return 0.0
+    k = min(k, len(deltas))
+    return sum(deltas[-k:]) / k
+
+def _value_for_month_from_series(months: list[str], serie: list[float], ym: str) -> float | None:
+    """Si ym está en months (y hay misma longitud), devuelve ese valor, si no None."""
+    if not months or len(months) != len(serie):
+        return None
+    try:
+        i = months.index(ym)
+    except ValueError:
+        return None
+    try:
+        val = float(serie[i] or 0.0)
+    except Exception:
+        val = 0.0
+    return val
+
+def _extrapolate_with_trend(months: list[str], serie: list[float], ym: str) -> float:
+    """
+    Extrapola usando el último valor no-cero y el delta promedio de los últimos
+    3 movimientos. Si ym está antes del rango, usa el primer valor y los
+    primeros 3 deltas.
+    """
+    if not months or len(months) != len(serie):
+        # sin meses, vuelve a los fallbacks genéricos
+        b = _last_nonzero(serie)
+        if b == 0.0:
+            b = _moving_avg_last_k_nonzero(serie, k=3)
+        if b == 0.0:
+            b = sum([float(v or 0) for v in serie]) / 12.0 if serie else 0.0
+        return max(0.0, float(b))
+
+    ym_min, ym_max = months[0], months[-1]
+    t_min, t_max, t = _ym_to_int(ym_min), _ym_to_int(ym_max), _ym_to_int(ym)
+
+    # adelante del rango -> usar cola y tendencia de cola
+    if t > t_max:
+        anchor = _last_nonzero(serie)
+        if anchor == 0.0:
+            anchor = float(serie[-1] or 0.0)
+        slope = _avg_last_k_deltas(serie, k=3)  # delta promedio recientes
+        steps = t - t_max
+        return max(0.0, float(anchor + steps * slope))
+
+    # atrás del rango -> usar cabeza y "tendencia" inicial
+    if t < t_min:
+        # construir deltas iniciales
+        deltas = []
+        prev = None
+        for v in serie:
+            x = float(v or 0.0)
+            if prev is not None and x > 0 and prev > 0:
+                deltas.append(x - prev)
+            prev = x
+            if len(deltas) >= 3:
+                break
+        slope = sum(deltas) / len(deltas) if deltas else 0.0
+        # invertimos (vamos hacia atrás)
+        anchor = float(serie[0] or 0.0)
+        steps = t_min - t
+        return max(0.0, float(anchor - steps * slope))
+
+    # si está dentro, no deberíamos entrar aquí (lo maneja _value_for_month)
+    return max(0.0, float(_last_nonzero(serie)))
+
+def _csv_baseline_for_item(it, target_month: str) -> float:
+    """
+    Baseline para 'abcxyz_csv' sensible al MES objetivo:
+      1) Si el mes existe en el archivo, usa ese valor exacto.
+      2) Si está fuera de rango, extrapola con tendencia (delta promedio últimos 3).
+      3) Si no hay datos, usa fallbacks robustos.
     """
     if LAST_ABCXYZ_RESULT is None:
         return 0.0
 
     rows = LAST_ABCXYZ_RESULT.get("rows") or []
+    months = LAST_ABCXYZ_RESULT.get("months") or []
+    ym = _to_ym(target_month)
 
-    # Buscamos por id_producto y luego por nombre
+    # match por id o por nombre
     pid = getattr(it, "id_producto", None)
     nombre = (getattr(it, "producto", "") or "").strip().lower()
-
     cand = None
     for r in rows:
         r_pid = r.get("id_producto")
         r_nom = (r.get("producto") or "").strip().lower()
-        if pid is not None and r_pid == pid:
+        if pid not in (None, 0) and r_pid == pid:
             cand = r
             break
-        if cand is None and r_nom == nombre:
+        if cand is None and nombre and r_nom == nombre:
             cand = r
-
     if not cand:
         return 0.0
 
     serie = cand.get("amt_series") or cand.get("qty_series") or []
-    if serie:
-        return float(serie[-1])          # último mes del archivo
-    # fallback: promedio anual
-    base = float(cand.get("total_revenue") or cand.get("total_qty") or 0.0)
-    return base / 12.0 if base > 0 else 0.0
+
+    # 1) Valor directo del mes (si existe)
+    val_directo = _value_for_month_from_series(months, serie, ym)
+    if val_directo is not None and val_directo > 0:
+        return float(val_directo)
+
+    # 2) Extrapolación por tendencia cuando el mes no existe
+    val_trend = _extrapolate_with_trend(months, serie, ym)
+    if val_trend > 0:
+        return float(val_trend)
+
+    # 3) Fallbacks robustos
+    b = _last_nonzero(serie)
+    if b == 0.0:
+        b = _moving_avg_last_k_nonzero(serie, k=3)
+    if b == 0.0:
+        total = float(cand.get("total_revenue") or cand.get("total_qty") or 0.0)
+        b = (total / 12.0) if total > 0 else 0.0
+    return float(b)
+
+
 
 
 @app.post("/api/forecast/xgb", dependencies=[Depends(require_roles(ROL_ADMIN, ROL_USER))], response_model=List[ForecastResponseItem])
@@ -1175,12 +1325,13 @@ def forecast_history_detail(id_run: int):
         )
     return out
 
-@app.delete("/api/forecast/history/{id_run}", dependencies=[Depends(require_roles(ROL_ADMIN, ROL_USER))], status_code=HTTP_204_NO_CONTENT)
-def delete_forecast_run(id_run: int):
-    """
-    Elimina una corrida de forecast (cabecera + detalle).
-    """
-    forecast_conn.delete_run(id_run)
+################## NUEVO #####################
+from fastapi.responses import JSONResponse
 
-    return Response(status_code=HTTP_204_NO_CONTENT)
+@app.delete("/api/forecast/history/{id_run}",
+            dependencies=[Depends(require_roles(ROL_ADMIN, ROL_USER))])
+def delete_forecast_run(id_run: int):
+    forecast_conn.delete_run(id_run)
+    return JSONResponse(content={"ok": True, "id_run": id_run}, status_code=200)
+
 

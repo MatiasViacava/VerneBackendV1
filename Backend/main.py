@@ -1182,7 +1182,6 @@ def forecast_xgb(payload: ForecastRequest):
         meses.add(it.fecha_mes)
 
         if payload.origen == "abcxyz_db":
-            # modo “serio”: lag_1 desde Postgres
             rows_features.append(
                 build_feature_row(
                     producto=it.producto,
@@ -1191,15 +1190,13 @@ def forecast_xgb(payload: ForecastRequest):
                     pct_chg_1=it.pct_chg_1 or 0.0,
                 )
             )
-            if it.id_producto:
-                b = lag1_from_postgres(it.id_producto, it.fecha_mes)
-            else:
-                b = 0.0
+            b = lag1_from_postgres(it.id_producto, it.fecha_mes) if it.id_producto else 0.0
             baselines.append(float(b))
 
         else:
-            # origen 'abcxyz_csv' -> baseline desde archivo, sin modelo
-            b = _csv_baseline_for_item(it)
+            # 🔧 CSV/XLSX: baseline según el MES objetivo (no el último de la serie)
+            target_month = it.fecha_mes  # puede venir como 'YYYY-MM-01' o date
+            b = _csv_baseline_for_item(it, target_month)
             baselines.append(float(b))
 
     # 2) predecir según origen
@@ -1333,5 +1330,6 @@ from fastapi.responses import JSONResponse
 def delete_forecast_run(id_run: int):
     forecast_conn.delete_run(id_run)
     return JSONResponse(content={"ok": True, "id_run": id_run}, status_code=200)
+
 
 

@@ -634,7 +634,7 @@ def abcxyz_run_from_db():
 
     prows = pconn.read_producto()
     prod_map = {r[0]: {"id": r[0], "name": r[1]} for r in prows}
-    vrows = vconn.read_venta()
+    vrows = venta_conn.read_venta()
 
     monthly_qty = defaultdict(lambda: defaultdict(float))
     monthly_amt = defaultdict(lambda: defaultdict(float))

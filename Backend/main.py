@@ -112,7 +112,7 @@ app = FastAPI(title="Bee-Organized API Backend")
 # Orígenes permitidos extraídos de tu configuración local/producción
 origins = [
     "http://localhost:5173",
-    os.getenv("FRONTEND_URL", "https://benevolent-unicorn-02511b.netlify.app/")
+    os.getenv("FRONTEND_URL", "https://benevolent-unicorn-02511b.netlify.app")
 ]
 
 app.add_middleware(

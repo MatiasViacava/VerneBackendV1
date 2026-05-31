@@ -1,0 +1,17 @@
+# Entornos virtuales (Evita subir las 12,000 librerías)
+Backend/venv/
+venv/
+ENV/
+env/
+
+# Caché de Python
+**/__pycache__/
+*.pyc
+
+# Archivos de configuración secreta (¡No subas tus claves de Render!)
+.env
+Backend/.env
+
+# Archivos pesados o temporales del sistema
+.DS_Store
+Thumbs.db

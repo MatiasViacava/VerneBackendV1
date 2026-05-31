@@ -8,8 +8,9 @@ class VentaConnection:
 
     def __init__(self):
         try:
+            # Mantiene la conexión segura de producción en Render usando variables de entorno
             self.conn = psycopg.connect(os.getenv("DATABASE_URL"))
-            print("✅ Conectado a PostgreSQL en Render (desde local)")
+            print("✅ Conectado a PostgreSQL en Render (Producción)")
         except Exception as err:
             print(f"❌ Error conectando a la base de datos: {err}")
 
@@ -51,6 +52,7 @@ class VentaConnection:
             )
             self.conn.commit()
 
+    # lista - ACTUALIZADO: Ahora ordena por fecha y ID descendente según tu versión local
     def read_venta(self):
         with self.conn.cursor() as cur:
             cur.execute(
@@ -58,7 +60,7 @@ class VentaConnection:
                 SELECT id_venta, id_producto, id_cliente, fecha,
                        cantidad, importe_total, estado
                 FROM venta
-                ORDER BY id_venta ASC
+                ORDER BY fecha DESC, id_venta DESC
                 """
             )
             return cur.fetchall()

@@ -7,8 +7,9 @@ class ClienteConnection:
 
     def __init__(self):
         try:
+            # Mantiene la conexión segura de Render usando la variable de entorno
             self.conn = psycopg.connect(os.getenv("DATABASE_URL"))
-            print("✅ Conectado a PostgreSQL en Render (desde local)")
+            print("✅ Conectado a PostgreSQL en Render (Producción)")
         except Exception as err:
             print(f"❌ Error conectando a la base de datos: {err}")
 
@@ -24,11 +25,24 @@ class ClienteConnection:
             )
             self.conn.commit()
 
-    # R (listar)
+    # R (listar) - ACTUALIZADO: Ahora ordena por los más recientes primero (DESC)
     def read_cliente(self):
         with self.conn.cursor() as cur:
-            cur.execute("SELECT id_cliente, nombre_empresa, ruc, direccion FROM cliente ORDER BY id_cliente")
+            cur.execute("SELECT id_cliente, nombre_empresa, ruc, direccion FROM cliente ORDER BY id_cliente DESC")
             return cur.fetchall()
+
+    # R (ruc ÚNICO) - NUEVO: Agregado desde tu versión local
+    def get_by_ruc(self, ruc: str):
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id_cliente, nombre_empresa, ruc, direccion
+                FROM cliente
+                WHERE ruc = %s
+                """,
+                (ruc,)
+            )
+            return cur.fetchone()
 
     # R (uno)
     def filtrar_cliente(self, id_cliente):

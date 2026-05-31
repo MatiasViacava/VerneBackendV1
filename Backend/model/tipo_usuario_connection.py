@@ -1,13 +1,15 @@
 # model/tipo_usuario_connection.py
 import psycopg
 import os
+
 class TipoUsuarioConnection:
     conn = None
 
     def __init__(self):
         try:
+            # Mantiene la conexión segura de producción en Render
             self.conn = psycopg.connect(os.getenv("DATABASE_URL"))
-            print("✅ Conectado a PostgreSQL en Render (desde local)")
+            print("✅ Conectado a PostgreSQL en Render (Producción)")
         except Exception as err:
             print(f"❌ Error conectando a la base de datos: {err}")
 
@@ -22,13 +24,14 @@ class TipoUsuarioConnection:
             )
             self.conn.commit()
 
+    # READ - ACTUALIZADO: Ahora ordena de forma descendente (DESC) según tu local
     def read_tipo_usuario(self):
         with self.conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT id_tipousuario, tipo_usuario, id_usuario
                 FROM tipo_usuario
-                ORDER BY id_tipousuario
+                ORDER BY id_tipousuario DESC
                 """
             )
             return cur.fetchall()

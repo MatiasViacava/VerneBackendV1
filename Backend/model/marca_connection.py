@@ -1,22 +1,25 @@
 # model/marca_connection.py
 import psycopg
 import os
+
 class MarcaConnection:
     conn = None
 
     def __init__(self):
         try:
+            # Mantiene la conexión segura de producción en Render usando variables de entorno
             self.conn = psycopg.connect(os.getenv("DATABASE_URL"))
-            print("✅ Conectado a PostgreSQL en Render (desde local)")
+            print("✅ Conectado a PostgreSQL en Render (Producción)")
         except Exception as err:
             print(f"❌ Error conectando a la base de datos: {err}")
 
+    # R (listar) - ACTUALIZADO: Ahora ordena de forma descendente (DESC) según tu versión local
     def read_marca(self):
         with self.conn.cursor() as cur:
             data = cur.execute("""
                 SELECT id_marca, nombre_marca
                 FROM marca
-                ORDER BY nombre_marca ASC
+                ORDER BY nombre_marca DESC
             """)
             return data.fetchall()
 

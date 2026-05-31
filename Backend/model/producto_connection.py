@@ -1,12 +1,15 @@
+# model/producto_connection.py
 import psycopg
 import os
+
 class ProductoConnection:
     conn = None
 
     def __init__(self):
         try:
+            # Mantiene la conexión segura de producción en Render
             self.conn = psycopg.connect(os.getenv("DATABASE_URL"))
-            print("✅ Conectado a PostgreSQL en Render (desde local)")
+            print("✅ Conectado a PostgreSQL en Render (Producción)")
         except Exception as err:
             print(f"❌ Error conectando a la base de datos: {err}")
 
@@ -25,7 +28,7 @@ class ProductoConnection:
             self.conn.commit()
             return new_id
 
-    # READ (lista simple)
+    # READ (lista simple) - ACTUALIZADO: Ordenamiento DESC según tu local
     def read_producto(self):
         with self.conn.cursor() as cur:
             cur.execute(
@@ -39,12 +42,12 @@ class ProductoConnection:
                   p.precio_unitario AS precio_unitario,
                   p.stock
                 FROM producto p
-                ORDER BY p.id_producto
+                ORDER BY p.id_producto DESC
                 """
             )
             return cur.fetchall()
 
-    # READ (lista con nombre de marca)
+    # READ (lista con nombre de marca) - ACTUALIZADO: Ordenamiento DESC según tu local
     def read_producto_view(self):
         with self.conn.cursor() as cur:
             cur.execute(
@@ -60,7 +63,7 @@ class ProductoConnection:
                   m.nombre_marca
                 FROM producto p
                 JOIN marca m ON m.id_marca = p.id_marca
-                ORDER BY p.id_producto
+                ORDER BY p.id_producto DESC
                 """
             )
             return cur.fetchall()

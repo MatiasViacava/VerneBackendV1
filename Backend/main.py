@@ -63,7 +63,23 @@ from ml.runtime_xgb import build_feature_row, predict_batch, baseline_from_maps
 from ml.lag1_postgres import lag1_from_postgres
 
 # --- Inicialización del Estado ---
-LAST_ABCXYZ_RESULT: Optional[Dict[str, Any]] = None
+# ⬇️ Guardamos el último análisis ABC-XYZ POR FUENTE (independientes entre sí)
+LAST_ABCXYZ_DB:    Optional[Dict[str, Any]] = None   # último análisis desde BD
+LAST_ABCXYZ_EXCEL: Optional[Dict[str, Any]] = None   # último análisis desde archivo
+
+def _get_last_abcxyz(source: Optional[str]) -> Optional[Dict[str, Any]]:
+    """
+    Devuelve el último análisis según la fuente solicitada.
+    - 'db'    -> LAST_ABCXYZ_DB
+    - 'excel' -> LAST_ABCXYZ_EXCEL
+    - None    -> el más reciente de los dos (por compatibilidad)
+    """
+    if source == "db":
+        return LAST_ABCXYZ_DB
+    if source == "excel":
+        return LAST_ABCXYZ_EXCEL
+    # sin fuente: devolvemos el que exista (prioriza el que tenga datos)
+    return LAST_ABCXYZ_DB or LAST_ABCXYZ_EXCEL
 
 # --- Configuración JWT y Seguridad ---
 SECRET_KEY = os.getenv("SECRET_KEY", "CAMBIA_ESTA_CLAVE_SUPER_SECRETA")
@@ -626,7 +642,7 @@ def abcxyz_precheck():
 
 @app.post("/api/abcxyz/run", dependencies=[Depends(require_roles(ROL_ADMIN, ROL_USER))])
 def abcxyz_run_from_db():
-    global LAST_ABCXYZ_RESULT
+    global LAST_ABCXYZ_DB
 
     cfg = load_config()
     keys = last_12_month_keys()
@@ -713,7 +729,8 @@ def abcxyz_run_from_db():
         "source": "db",
     }
 
-    LAST_ABCXYZ_RESULT = payload
+    # Guardar como "último análisis desde BD"
+    LAST_ABCXYZ_DB = payload
     return payload
 
 @app.get("/api/abcxyz/template")
@@ -729,7 +746,7 @@ def abcxyz_template():
 
 @app.post("/api/abcxyz/import", dependencies=[Depends(require_roles(ROL_ADMIN, ROL_USER))])
 async def abcxyz_import(file: UploadFile = File(...)):
-    global LAST_ABCXYZ_RESULT
+    global LAST_ABCXYZ_EXCEL
     content = await file.read()
     name = (file.filename or "").lower()
 
@@ -853,20 +870,32 @@ async def abcxyz_import(file: UploadFile = File(...)):
         "source": "excel",
     }
 
-    LAST_ABCXYZ_RESULT = payload
+    # Guardar como "último análisis desde archivo"
+    LAST_ABCXYZ_EXCEL = payload
     return payload
 
 @app.get("/api/abcxyz/last", dependencies=[Depends(require_roles(ROL_ADMIN, ROL_USER))])
 def abcxyz_last(source: Optional[str] = None):
-    if LAST_ABCXYZ_RESULT is None:
-        raise HTTPException(404, detail="Aún no se ha ejecutado ningún análisis ABC-XYZ.")
+    """
+    Devuelve el último análisis ABC-XYZ de la fuente indicada.
+    Ahora BD y Excel se guardan por separado: ejecutar uno NO borra el otro.
 
-    if source is not None and LAST_ABCXYZ_RESULT.get("source") != source:
-        raise HTTPException(
-            404,
-            detail=f"No hay un análisis ABC-XYZ reciente con fuente '{source}'. Última fuente: '{LAST_ABCXYZ_RESULT.get('source')}'."
-        )
-    return LAST_ABCXYZ_RESULT
+    - ?source=db    -> último análisis desde la base de datos
+    - ?source=excel -> último análisis desde archivo CSV/XLSX
+    - (sin source)  -> el más reciente disponible
+    """
+    result = _get_last_abcxyz(source)
+
+    if result is None:
+        if source == "db":
+            detail = "Aún no se ha ejecutado un análisis ABC-XYZ desde la base de datos."
+        elif source == "excel":
+            detail = "Aún no se ha importado un análisis ABC-XYZ desde archivo."
+        else:
+            detail = "Aún no se ha ejecutado ningún análisis ABC-XYZ."
+        raise HTTPException(404, detail=detail)
+
+    return result
 
 
 # ============================================================================
@@ -977,11 +1006,12 @@ def _extrapolate_with_trend(months: list[str], serie: list[float], ym: str) -> f
     return max(0.0, float(_last_nonzero(serie)))
 
 def _csv_baseline_for_item(it, target_month: str) -> float:
-    if LAST_ABCXYZ_RESULT is None:
+    # El forecast por CSV se basa SIEMPRE en el análisis importado desde archivo
+    if LAST_ABCXYZ_EXCEL is None:
         return 0.0
 
-    rows = LAST_ABCXYZ_RESULT.get("rows") or []
-    months = LAST_ABCXYZ_RESULT.get("months") or []
+    rows = LAST_ABCXYZ_EXCEL.get("rows") or []
+    months = LAST_ABCXYZ_EXCEL.get("months") or []
     ym = _to_ym(target_month)
 
     pid = getattr(it, "id_producto", None)
